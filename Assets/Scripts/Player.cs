@@ -46,6 +46,11 @@ public class Player : MonoBehaviour
         {
             m_View = Camera.main.transform;
         }
+
+        if (m_Model != null)
+        {
+            m_Model.localRotation = Quaternion.identity;
+        }
     }
 
     private void OnEnable()
