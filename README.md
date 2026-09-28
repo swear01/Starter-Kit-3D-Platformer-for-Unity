@@ -28,7 +28,7 @@ The improved camera is enabled by default. Losing a required runtime reference d
 - Hidden demo shortcuts: F1 selects the original camera behavior, F2 restores the improved camera. On macOS, use Fn with F1/F2 if those keys control brightness. There is no camera status text on the game screen.
 - Select the Camera object to tune `Mouse Sensitivity` (horizontal/vertical degrees per pixel), `Gamepad Sensitivity` (degrees per second), `Comfort Follow Smooth`, `Pivot Height`, `Wheel Zoom Step`, `Collision Mask`, `Player Visible Distance`, `Collision Look Ahead` (metres), `Collision In/Out Damping` (seconds), and `Collision Hold Time` in the Inspector.
 
-The Player normalizes its model container to the controller's local +Z facing at startup. The stock prefab is already aligned; this normalization corrects the imported workshop model's reversed container rotation. It does not alter model scale.
+Character size and facing are prepared in import settings and the visual prefab. Player preserves the visual's initial scale for jump/landing squash and does not overwrite its rotation. See the [download-to-play character workshop](Docs/CharacterWorkshop.md) for the complete manual workflow and the optional two-step Editor tool.
 
 `Look` now supplies raw pointer/stick values. Original mode restores the old scaling and damping for comparison. In the Editor, original mode requests 35 FPS with VSync off; improved mode enables VSync and removes that cap. Actual refresh rate depends on the display and Editor.
 
