@@ -18,6 +18,7 @@ public class View : MonoBehaviour
     [SerializeField] private float m_RotationSpeedX = 6f;
     [SerializeField] private float m_RotationSpeedY = 10f;
     [SerializeField] private float m_RotationSmooth = 6f;
+    [Header("Shared Pitch Limits")]
     [SerializeField] private float m_MinPitch = 0f;
     [SerializeField] private float m_MaxPitch = 80f;
 
@@ -77,6 +78,7 @@ public class View : MonoBehaviour
         m_PreviousCursorLock = Cursor.lockState;
         m_PreviousCursorVisible = Cursor.visible;
         SetFrameRate();
+        CaptureCursor(!m_UseOriginalCamera);
         m_LookAction?.action.Enable();
         if (m_ZoomAction != null)
         {
@@ -142,7 +144,6 @@ public class View : MonoBehaviour
             transform.position = m_Target.position + Vector3.up * m_PivotHeight;
             transform.rotation = Quaternion.Euler(m_CameraRotation.x, m_CameraRotation.y, 0f);
             m_CameraPivot.localPosition = Vector3.back * m_Zoom;
-            CaptureCursor(true);
             ApplyCameraPosition(0f);
         }
     }
@@ -168,7 +169,7 @@ public class View : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (m_Target == null) return;
+        if (m_Target == null || m_CameraPivot == null || m_CameraHandle == null || m_Camera == null || m_CameraTransform == null) return;
         Keyboard keyboard = Keyboard.current;
         if (keyboard != null)
         {
@@ -313,6 +314,7 @@ public class View : MonoBehaviour
         if (Application.isFocused && zoomAction != null && (m_UseOriginalCamera || !(zoomAction.activeControl?.device is Mouse) || Cursor.lockState == CursorLockMode.Locked))
         {
             if (m_UseOriginalCamera) m_Zoom -= scroll * m_ZoomSpeed;
+            // The Zoom action reports 0.1 per wheel notch.
             else if (zoomAction.activeControl?.device is Mouse) m_Zoom -= scroll * 10f * m_WheelZoomStep;
             else m_Zoom -= zoomAction.ReadValue<float>() * m_ZoomSpeed * deltaTime;
             m_Zoom = Mathf.Clamp(m_Zoom, m_ZoomMin, m_ZoomMax);

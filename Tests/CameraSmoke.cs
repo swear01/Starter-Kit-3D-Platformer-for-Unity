@@ -41,6 +41,7 @@ public static class CameraSmoke
         var savedCameraPosition = camera.transform.position;
         var savedCameraRotation = camera.transform.rotation;
         var savedCollision = Get<float>(v, "m_CollisionDistance");
+        var shadowModes = Get<ShadowCastingMode[]>(v, "m_ShadowModes");
         var savedHidden = Get<bool>(v, "m_PlayerHidden");
         var savedFollow = Get<float>(v, "m_ComfortFollowSmooth");
         var mouseSensitivity = Get<Vector2>(v, "m_MouseSensitivity");
@@ -88,6 +89,9 @@ public static class CameraSmoke
                 Check(Get<bool>(v, "m_UseOriginalCamera") == (key == Key.F1), "F1/F2 did not switch mode");
                 Check(Application.targetFrameRate == (key == Key.F1 ? 35 : -1), "Mode frame pacing did not switch");
             }
+            v.enabled = false;
+            v.enabled = true;
+            Check(Cursor.lockState == CursorLockMode.Locked, "Re-enabling improved camera must capture the cursor");
             v.enabled = false;
             Get<InputActionReference>(v, "m_LookAction").action.Enable();
             Get<InputActionReference>(v, "m_ZoomAction").action.Enable();
@@ -187,6 +191,8 @@ public static class CameraSmoke
             for (int frame = 0; frame < 360; frame++) Call(v, "ApplyCameraPosition", 1f / 120f);
             Check(Vector3.Distance(origin, camera.transform.position) > 4.99f, "Camera never recovers full distance");
             Check(!Get<bool>(v, "m_PlayerHidden"), "Player did not reappear after camera recovery");
+            for (int i = 0; i < renderers.Length; i++)
+                Check(renderers[i].shadowCastingMode == shadowModes[i], "Player shadow mode did not recover");
             wall.SetActive(true);
             foreach (int fps in new[] { 30, 60, 144 })
             {
@@ -247,11 +253,15 @@ public static class CameraSmoke
                 Check(biggestStep < 13f / fps, "Gentle orbit still jumps across the obstacle at " + fps + " FPS");
                 orbitResults.Add(new { fps, degreesPerSecond = 30, biggestStep });
             }
+            var savedCamera = Get<Camera>(v, "m_Camera");
+            Set(v, "m_Camera", null);
+            try { Call(v, "LateUpdate"); }
+            finally { Set(v, "m_Camera", savedCamera); }
             UnityEngine.Object.DestroyImmediate(testTarget);
             var missingTargetPosition = v.transform.position;
             Call(v, "LateUpdate");
             Check(v.transform.position == missingTargetPosition, "Missing target should leave the camera in place");
-            return new { passed = true, missingTargetAndZeroFollow = "passed", input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", bufferSaturationAndSameFrameMovement = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
+            return new { passed = true, missingReferencesAndZeroFollowAndEnable = "passed", input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", bufferSaturationAndSameFrameMovement = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
         }
         finally
         {
