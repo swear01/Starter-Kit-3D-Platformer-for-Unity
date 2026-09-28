@@ -27,6 +27,7 @@ public static class CameraSmoke
         Check(Application.isFocused, "Focus the Game view before running");
         View v = UnityEngine.Object.FindAnyObjectByType<View>();
         Check(v != null, "No View found in scene");
+        Check(v.enabled, "Run with the camera enabled");
         Check(!Get<bool>(v, "m_UseOriginalCamera"), "Improved must be the default");
         Check(Quaternion.Angle(v.transform.rotation, Quaternion.Euler(Get<Vector2>(v, "m_CameraRotation").x, Get<Vector2>(v, "m_CameraRotation").y, 0f)) < 0.01f, "Startup rotation still drifting");
         Check(QualitySettings.vSyncCount == 1 && Application.targetFrameRate == -1, "Improved mode still caps Editor at 35 FPS");
@@ -50,15 +51,22 @@ public static class CameraSmoke
         var savedZoom = Get<float>(v, "m_Zoom");
         var savedHold = Get<float>(v, "m_CollisionHoldRemaining");
         var savedHeldDistance = Get<float>(v, "m_HeldCollisionDistance");
-        var pad = InputSystem.AddDevice<Gamepad>();
-        var mouse = InputSystem.AddDevice<Mouse>();
-        var keyboard = InputSystem.AddDevice<Keyboard>();
+        var globals = (vSync: QualitySettings.vSyncCount, frameRate: Application.targetFrameRate, cursorLock: Cursor.lockState, cursorVisible: Cursor.visible);
+        var previousSettings = (vSync: Get<int>(v, "m_PreviousVSync"), frameRate: Get<int>(v, "m_PreviousFrameRate"), cursorLock: Get<CursorLockMode>(v, "m_PreviousCursorLock"), cursorVisible: Get<bool>(v, "m_PreviousCursorVisible"));
+        Gamepad pad = null;
+        Mouse mouse = null;
+        Keyboard keyboard = null;
+        Touchscreen touch = null;
         GameObject testTarget = null, trigger = null, wall = null;
         var fpsResults = new List<object>();
         var approachResults = new List<object>();
         var orbitResults = new List<object>();
         try
         {
+            pad = InputSystem.AddDevice<Gamepad>();
+            mouse = InputSystem.AddDevice<Mouse>();
+            keyboard = InputSystem.AddDevice<Keyboard>();
+            touch = InputSystem.AddDevice<Touchscreen>();
             InputSystem.QueueStateEvent(mouse, new MouseState { scroll = Vector2.up * 120f });
             InputSystem.Update();
             Call(v, "LateUpdate");
@@ -94,6 +102,16 @@ public static class CameraSmoke
             InputSystem.Update();
             Call(v, "LateUpdate");
             Check(Get<float>(v, "m_Zoom") == releasedZoom, "Released mouse still changes zoom");
+            InputSystem.QueueStateEvent(mouse, new MouseState());
+            InputSystem.QueueStateEvent(touch, new TouchState { touchId = 1, phase = UnityEngine.InputSystem.TouchPhase.Began, position = new Vector2(100f, 100f) });
+            InputSystem.Update();
+            float touchYaw = Get<Vector2>(v, "m_CameraRotation").y;
+            InputSystem.QueueStateEvent(touch, new TouchState { touchId = 1, phase = UnityEngine.InputSystem.TouchPhase.Moved, position = new Vector2(200f, 100f), delta = Vector2.right * 100f });
+            InputSystem.Update();
+            Call(v, "HandleInput", 1f / 60f);
+            Check(Mathf.Abs(Mathf.DeltaAngle(touchYaw, Get<Vector2>(v, "m_CameraRotation").y) - 100f * mouseSensitivity.x) < 0.001f, "Touch drag must rotate while the cursor is unlocked");
+            InputSystem.QueueStateEvent(touch, new TouchState { touchId = 1, phase = UnityEngine.InputSystem.TouchPhase.Ended, position = new Vector2(200f, 100f) });
+            InputSystem.Update();
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.QueueStateEvent(mouse, new MouseState { buttons = 1 });
             InputSystem.Update();
@@ -310,17 +328,23 @@ public static class CameraSmoke
             Set(v, "m_CameraRotation", new Vector2(savedRotation.eulerAngles.x, savedRotation.eulerAngles.y));
             Set(v, "m_CameraRotationSmoothed", Get<Vector2>(v, "m_CameraRotation"));
             Set(v, "m_UseOriginalCamera", false);
-            InputSystem.RemoveDevice(pad);
-            InputSystem.RemoveDevice(mouse);
-            InputSystem.RemoveDevice(keyboard);
+            if (pad != null) InputSystem.RemoveDevice(pad);
+            if (mouse != null) InputSystem.RemoveDevice(mouse);
+            if (keyboard != null) InputSystem.RemoveDevice(keyboard);
+            if (touch != null) InputSystem.RemoveDevice(touch);
             camera.transform.SetPositionAndRotation(savedCameraPosition, savedCameraRotation);
             Call(v, "SetPlayerVisibility", !savedHidden);
             Set(v, "m_CollisionHoldRemaining", savedHold);
             Set(v, "m_HeldCollisionDistance", savedHeldDistance);
             v.enabled = true;
-            Call(v, "SetFrameRate");
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            Set(v, "m_PreviousVSync", previousSettings.vSync);
+            Set(v, "m_PreviousFrameRate", previousSettings.frameRate);
+            Set(v, "m_PreviousCursorLock", previousSettings.cursorLock);
+            Set(v, "m_PreviousCursorVisible", previousSettings.cursorVisible);
+            QualitySettings.vSyncCount = globals.vSync;
+            Application.targetFrameRate = globals.frameRate;
+            Cursor.lockState = globals.cursorLock;
+            Cursor.visible = globals.cursorVisible;
         }
     }
 }

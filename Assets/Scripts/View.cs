@@ -298,7 +298,7 @@ public class View : MonoBehaviour
         InputAction lookAction = m_LookAction != null ? m_LookAction.action : null;
         Vector2 look = lookAction != null ? lookAction.ReadValue<Vector2>() : Vector2.zero;
         bool pointer = lookAction?.activeControl?.device is Pointer;
-        if (!Application.isFocused || (!m_UseOriginalCamera && pointer && Cursor.lockState != CursorLockMode.Locked)) look = Vector2.zero;
+        if (!Application.isFocused || (!m_UseOriginalCamera && lookAction?.activeControl?.device is Mouse && Cursor.lockState != CursorLockMode.Locked)) look = Vector2.zero;
         if (m_UseOriginalCamera)
         {
             look *= (lookAction?.activeControl?.device is Gamepad || lookAction?.activeControl?.device is Joystick) ? 0.5f : 0.05f;
