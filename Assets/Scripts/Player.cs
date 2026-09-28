@@ -36,6 +36,7 @@ public class Player : MonoBehaviour
     private bool m_PreviouslyFloored;
     private int m_JumpsRemaining = 0;
     private int m_Coins;
+    private Vector3 m_InitialScale = Vector3.one;
 
     public event Action<int> OnCoinCollected;
 
@@ -49,7 +50,7 @@ public class Player : MonoBehaviour
 
         if (m_Model != null)
         {
-            m_Model.localRotation = Quaternion.identity;
+            m_InitialScale = m_Model.localScale;
         }
     }
 
@@ -65,10 +66,10 @@ public class Player : MonoBehaviour
         m_JumpAction?.action.Disable();
     }
 
-    private void Update()
-    {
-        float delta = Time.deltaTime;
+    private void Update() => UpdatePlayer(Time.deltaTime);
 
+    private void UpdatePlayer(float delta)
+    {
         HandleControls(delta);
         HandleGravity(delta);
         HandleEffects(delta);
@@ -93,7 +94,7 @@ public class Player : MonoBehaviour
 
         if (m_Model != null)
         {
-            m_Model.localScale = Vector3.Lerp(m_Model.localScale, Vector3.one, delta * 10f);
+            m_Model.localScale = Vector3.Lerp(m_Model.localScale, m_InitialScale, delta * 10f);
         }
 
         bool isGrounded = m_Controller.isGrounded;
@@ -101,7 +102,7 @@ public class Player : MonoBehaviour
         {
             if (m_Model != null)
             {
-                m_Model.localScale = new Vector3(1.25f, 0.75f, 1.25f);
+                m_Model.localScale = Vector3.Scale(m_InitialScale, new Vector3(1.25f, 0.75f, 1.25f));
             }
 
             if (m_LandAudio != null)
@@ -164,7 +165,7 @@ public class Player : MonoBehaviour
 
         if (m_Model != null)
         {
-            m_Model.localScale = new Vector3(0.5f, 1.5f, 0.5f);
+            m_Model.localScale = Vector3.Scale(m_InitialScale, new Vector3(0.5f, 1.5f, 0.5f));
         }
 
         m_JumpsRemaining--;
