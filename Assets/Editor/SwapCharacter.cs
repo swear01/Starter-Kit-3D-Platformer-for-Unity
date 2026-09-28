@@ -41,7 +41,7 @@ public static class SwapCharacter
             throw new InvalidOperationException("Expected the starter's three-motion Locomotion blend tree.");
         foreach (string name in new[] { "Idle", "Run", "Jump" })
         {
-            var importer = (ModelImporter)AssetImporter.GetAtPath(Folder + name.ToLowerInvariant() + ".fbx");
+            var importer = AssetImporter.GetAtPath(Folder + name.ToLowerInvariant() + ".fbx") as ModelImporter;
             if (importer == null || !importer.defaultClipAnimations.Any(c => c.name == "Root|" + name))
                 throw new InvalidOperationException("Missing source animation: " + name);
         }
@@ -106,7 +106,8 @@ public static class SwapCharacter
 
     static void Configure(string path, string animation = null)
     {
-        var importer = (ModelImporter)AssetImporter.GetAtPath(path);
+        var importer = AssetImporter.GetAtPath(path) as ModelImporter
+            ?? throw new InvalidOperationException("Missing ModelImporter: " + path);
         importer.animationType = ModelImporterAnimationType.Human;
         importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
         importer.globalScale = ImportScale;
