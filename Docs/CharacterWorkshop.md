@@ -108,7 +108,7 @@ Player.cs 只記住 Model 初始大小，跳躍／落地相對這個大小拉伸
 - `Tools > Character Workshop > 1 Prepare Zombie Prefab`：處理匯入、動畫、材質，保存角色 Prefab。
 - `Tools > Character Workshop > 2 Apply Prepared Zombie To Player`：把已準備好的角色接到 Player。
 
-兩步都要停止 Play Mode。工具會更新這個範例的匯入設定、角色 Prefab 與角色專用 Animator Controller，保留原本的 Controller，並重建這包素材的自動 Avatar 映射；再次執行會重新套用這些固定值。它不下載檔案、不刪除舊素材，也不把任何「整理模型」工作放到遊戲執行時。
+兩步都要停止 Play Mode；套用前先關閉 Player 的 Prefab Mode。工具會更新這個範例的匯入設定、角色 Prefab 與角色專用 Animator Controller，保留原本的 Controller，並重建這包素材的自動 Avatar 映射；再次執行會重新套用這些固定值。它不下載檔案、不刪除舊素材，也不把任何「整理模型」工作放到遊戲執行時。
 
 可選的本機回歸檢查（需要已安裝的 Unity Pipeline／CLI）：
 
@@ -116,4 +116,4 @@ Player.cs 只記住 Model 初始大小，跳躍／落地相對這個大小拉伸
 unity command --project-path /path/to/project run_script --file Tests/CharacterSmoke.cs --entry CharacterSmoke.Main
 ```
 
-請在 Main 的 Play Mode、Game view 有 focus 時執行。測試不保存場景。
+請在 Main 的 Play Mode、Game view 有 focus 時執行。測試以固定 1/60 秒步長檢查同一份 Player 更新邏輯，不依賴 Editor 當下幀率，也不保存場景。

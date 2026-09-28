@@ -66,10 +66,10 @@ public class Player : MonoBehaviour
         m_JumpAction?.action.Disable();
     }
 
-    private void Update()
-    {
-        float delta = Time.deltaTime;
+    private void Update() => UpdatePlayer(Time.deltaTime);
 
+    private void UpdatePlayer(float delta)
+    {
         HandleControls(delta);
         HandleGravity(delta);
         HandleEffects(delta);

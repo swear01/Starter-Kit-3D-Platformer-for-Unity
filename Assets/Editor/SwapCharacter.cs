@@ -20,7 +20,7 @@ public static class SwapCharacter
         if (EditorApplication.isPlaying)
             throw new InvalidOperationException("Stop Play Mode before preparing assets.");
 
-        var model = Require<GameObject>(ModelPath);
+        Require<GameObject>(ModelPath);
         var texture = Require<Texture2D>(Folder + "zombieA.png");
         Require<AnimatorController>(TemplatePath);
         if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath) == null && !AssetDatabase.CopyAsset(TemplatePath, ControllerPath))
@@ -83,7 +83,7 @@ public static class SwapCharacter
         var visual = new GameObject("ZombieCharacter");
         try
         {
-            model = Require<GameObject>(ModelPath);
+            var model = Require<GameObject>(ModelPath);
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(model, visual.transform)
                 ?? throw new InvalidOperationException("Could not instantiate " + ModelPath);
             instance.transform.localPosition = Vector3.zero;
@@ -142,6 +142,9 @@ public static class SwapCharacter
     {
         if (EditorApplication.isPlaying)
             throw new InvalidOperationException("Stop Play Mode before editing Player.");
+        var stage = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+        if (stage != null && stage.assetPath == PlayerPath)
+            throw new InvalidOperationException("Close Player Prefab Mode before applying the character.");
         var ready = Require<GameObject>(ReadyPath);
         var preparedAnimator = ready.GetComponentInChildren<Animator>();
         if (preparedAnimator == null || preparedAnimator.runtimeAnimatorController == null ||

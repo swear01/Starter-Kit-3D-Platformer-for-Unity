@@ -14,23 +14,27 @@ public static class CharacterSmoke
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
     static void Tick(Player player, Animator animator, Gamepad pad, GamepadState state, int count = 1)
     {
-        // One tick is an input edge; longer runs use equivalent 60 Hz durations.
-        count = count == 1 ? 1 : Mathf.CeilToInt(count / (60f * Time.deltaTime));
         for (int i = 0; i < count; i++)
         {
             InputSystem.QueueStateEvent(pad, state);
             InputSystem.Update();
-            typeof(Player).GetMethod("Update", Fields).Invoke(player, null);
-            animator.Update(Time.deltaTime);
+            typeof(Player).GetMethod("UpdatePlayer", Fields).Invoke(player, new object[] { 1f / 60f });
+            animator.Update(1f / 60f);
         }
     }
-    static float Height(Animator animator) => animator.GetBoneTransform(HumanBodyBones.Head).position.y -
-        (animator.GetBoneTransform(HumanBodyBones.LeftFoot).position.y + animator.GetBoneTransform(HumanBodyBones.RightFoot).position.y) / 2f;
+    static float Height(Animator animator)
+    {
+        Check(animator != null && animator.isHuman, "Character needs a Humanoid Animator.");
+        var head = animator.GetBoneTransform(HumanBodyBones.Head);
+        var left = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+        var right = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+        Check(head != null && left != null && right != null, "Avatar needs Head and Foot bones.");
+        return head.position.y - (left.position.y + right.position.y) / 2f;
+    }
 
     public static object Main()
     {
         Check(EditorApplication.isPlaying && Application.isFocused, "Run in Main Play Mode with Game view focused.");
-        Check(Time.deltaTime > 0f && Time.deltaTime < 0.1f, "Expected a normal Play Mode timestep.");
         var live = UnityEngine.Object.FindAnyObjectByType<Player>();
         Check(live != null && live.enabled, "Expected the active Main Player.");
         var ready = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/NewCharacter/ZombieCharacter.prefab");
@@ -101,7 +105,7 @@ public static class CharacterSmoke
             var model = Get<Transform>(player, "m_Model");
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             Tick(player, animator, pad, new GamepadState(), 100);
-            Check(instance.GetComponent<CharacterController>().isGrounded, "Prepared character did not land on the test platform.");
+            Check(instance.GetComponent<CharacterController>().isGrounded, "Prepared character did not land on the test platform: position=" + instance.transform.position + ", gravity=" + Get<float>(player, "m_Gravity"));
             Tick(player, animator, pad, new GamepadState(), 8);
             Check(Height(animator) > 0.5f && Height(animator) < 1.5f, "Idle warps the skeleton scale.");
             var idleArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm).localRotation;
@@ -110,8 +114,8 @@ public static class CharacterSmoke
             var travel = instance.transform.position - start;
             travel.y = 0;
             Check(travel.magnitude > 0.1f && Vector3.Dot(travel.normalized, instance.transform.forward) > 0.9f, "Movement and player facing disagree.");
-            var shoulders = animator.GetBoneTransform(HumanBodyBones.RightShoulder).position - animator.GetBoneTransform(HumanBodyBones.LeftShoulder).position;
-            var bodyForward = Vector3.Cross(shoulders, Vector3.up).normalized;
+            var arms = animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position - animator.GetBoneTransform(HumanBodyBones.LeftUpperArm).position;
+            var bodyForward = Vector3.Cross(arms, Vector3.up).normalized;
             Check(Vector3.Dot(bodyForward, instance.transform.forward) > 0.8f,
                 "Animated body faces against movement: " + Vector3.Dot(bodyForward, instance.transform.forward));
             Check(Quaternion.Angle(idleArm, animator.GetBoneTransform(HumanBodyBones.LeftUpperArm).localRotation) > 1f, "Run does not animate the skeleton.");
@@ -138,7 +142,7 @@ public static class CharacterSmoke
             Check(Vector3.Distance(model.localScale, Vector3.Scale(Vector3.one * 0.65f, new Vector3(0.5f, 1.5f, 0.5f))) < 0.001f,
                 "Jump replaces the authored baseline scale.");
             Tick(player, animator, pad, new GamepadState());
-            int limit = Mathf.CeilToInt(2f / Time.deltaTime);
+            int limit = 120;
             while (!instance.GetComponent<CharacterController>().isGrounded && limit-- > 0)
                 Tick(player, animator, pad, new GamepadState());
             Check(Vector3.Distance(model.localScale, new Vector3(0.8125f, 0.4875f, 0.8125f)) < 0.001f,
