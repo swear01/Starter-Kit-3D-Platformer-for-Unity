@@ -36,11 +36,15 @@ public static class CameraSmoke
         var savedRotation = v.transform.rotation;
         var savedPivot = pivot.localPosition;
         var savedZoom = Get<float>(v, "m_Zoom");
+        var savedHold = Get<float>(v, "m_CollisionHoldRemaining");
+        var savedHeldDistance = Get<float>(v, "m_HeldCollisionDistance");
         var pad = InputSystem.AddDevice<Gamepad>();
         var mouse = InputSystem.AddDevice<Mouse>();
         var keyboard = InputSystem.AddDevice<Keyboard>();
         GameObject testTarget = null, trigger = null, wall = null;
         var fpsResults = new List<object>();
+        var approachResults = new List<object>();
+        var orbitResults = new List<object>();
         try
         {
             InputSystem.QueueStateEvent(mouse, new MouseState { scroll = Vector2.up * 120f });
@@ -155,11 +159,73 @@ public static class CameraSmoke
             Physics.SyncTransforms();
             Call(v, "ApplyCameraPosition", 1f / 60f);
             float recovering = Vector3.Distance(origin, camera.transform.position);
-            Check(recovering > closeDistance && recovering < 5f, "Recovery snaps instead of easing outward");
-            for (int frame = 0; frame < 120; frame++) Call(v, "ApplyCameraPosition", 1f / 120f);
+            Check(recovering >= 0f && recovering <= closeDistance, "Cleared obstacle should hold the near position briefly");
+            for (int frame = 0; frame < 360; frame++) Call(v, "ApplyCameraPosition", 1f / 120f);
             Check(Vector3.Distance(origin, camera.transform.position) > 4.99f, "Camera never recovers full distance");
             Check(!Get<bool>(v, "m_PlayerHidden"), "Player did not reappear after camera recovery");
-            return new { passed = true, input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", firstRecoveryDistance = recovering, startupAndHotkeysAndPitchAndCollision = "passed" };
+            float nearHeight = camera.nearClipPlane * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f);
+            float radius = Mathf.Max(Get<float>(v, "m_CameraRadius"), Mathf.Sqrt(nearHeight * nearHeight * (1f + camera.aspect * camera.aspect) + camera.nearClipPlane * camera.nearClipPlane));
+            wall.SetActive(true);
+            foreach (int fps in new[] { 30, 60, 144 })
+            {
+                wall.transform.position = origin + Vector3.back * 6f;
+                Set(v, "m_CollisionDistance", 5f);
+                Set(v, "m_CollisionHoldRemaining", 0f);
+                Call(v, "ApplyCameraPosition", 1f / fps);
+                float first = Vector3.Distance(origin, camera.transform.position);
+                Check(first < 5f && first > 4.8f, "Look-ahead should begin a smooth pull before physical collision");
+                float previous = first, biggestStep = 0f;
+                for (int frame = 1; frame <= fps; frame++)
+                {
+                    float wallDistance = 6f - 3f * frame / fps;
+                    wall.transform.position = origin + Vector3.back * wallDistance;
+                    Call(v, "ApplyCameraPosition", 1f / fps);
+                    float current = Vector3.Distance(origin, camera.transform.position);
+                    float safe = Mathf.Min(5f, wallDistance - 0.1f - radius);
+                    Check(current <= safe + 0.001f, "Smoothed approach penetrates the wall at " + fps + " FPS");
+                    biggestStep = Mathf.Max(biggestStep, Mathf.Abs(current - previous));
+                    previous = current;
+                }
+                Check(biggestStep < 0.15f, "Walking approach still pops at " + fps + " FPS");
+                wall.SetActive(false);
+                float beforeRelease = Get<float>(v, "m_CollisionDistance");
+                for (int frame = 0; frame < Mathf.FloorToInt(fps * 0.1f); frame++) Call(v, "ApplyCameraPosition", 1f / fps);
+                Check(Get<float>(v, "m_CollisionDistance") <= beforeRelease + 0.001f, "Obstacle edge flicker immediately pulls camera back out");
+                for (int frame = 0; frame < fps * 3; frame++) Call(v, "ApplyCameraPosition", 1f / fps);
+                Check(Get<float>(v, "m_CollisionDistance") > 4.99f, "Delayed recovery failed at " + fps + " FPS");
+                approachResults.Add(new { fps, firstLookAheadDistance = first, biggestStep, approachEndDistance = previous });
+                wall.SetActive(true);
+            }
+            wall.transform.localScale = new Vector3(0.1f, 4f, 0.3f);
+            wall.transform.position = origin + new Vector3(0.9f, 0f, -3f);
+            Set(v, "m_CollisionDistance", 5f);
+            Set(v, "m_CollisionHoldRemaining", 0f);
+            Call(v, "ApplyCameraPosition", 1f / 60f);
+            float sideAnticipation = Get<float>(v, "m_CollisionDistance");
+            Check(sideAnticipation < 5f && sideAnticipation > 3f, "Side feeler should anticipate an edge without snapping");
+            wall.SetActive(false);
+            Call(v, "ApplyCameraPosition", 1f / 60f);
+            Check(Get<float>(v, "m_CollisionDistance") <= sideAnticipation, "One-frame platform edge causes outward pumping");
+            wall.SetActive(true);
+            wall.transform.localScale = new Vector3(1f, 4f, 0.3f);
+            wall.transform.position = origin + new Vector3(-1.5f, 0f, -3f);
+            foreach (int fps in new[] { 30, 60, 144 })
+            {
+                Set(v, "m_CollisionDistance", 5f);
+                Set(v, "m_CollisionHoldRemaining", 0f);
+                float previous = 5f, biggestStep = 0f;
+                for (int frame = 0; frame <= fps * 2; frame++)
+                {
+                    v.transform.rotation = Quaternion.Euler(0f, -30f + 30f * frame / fps, 0f);
+                    Call(v, "ApplyCameraPosition", 1f / fps);
+                    float current = Get<float>(v, "m_CollisionDistance");
+                    biggestStep = Mathf.Max(biggestStep, Mathf.Abs(current - previous));
+                    previous = current;
+                }
+                Check(biggestStep < 13f / fps, "Gentle orbit still jumps across the obstacle at " + fps + " FPS");
+                orbitResults.Add(new { fps, degreesPerSecond = 30, biggestStep });
+            }
+            return new { passed = true, input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
         }
         finally
         {
@@ -171,6 +237,7 @@ public static class CameraSmoke
             pivot.localPosition = savedPivot;
             Set(v, "m_Zoom", savedZoom);
             Set(v, "m_CollisionDistance", savedZoom);
+            Set(v, "m_CollisionHoldRemaining", 0f);
             Set(v, "m_CameraRotation", new Vector2(savedRotation.eulerAngles.x, savedRotation.eulerAngles.y));
             Set(v, "m_CameraRotationSmoothed", Get<Vector2>(v, "m_CameraRotation"));
             Set(v, "m_UseOriginalCamera", false);
@@ -178,6 +245,8 @@ public static class CameraSmoke
             InputSystem.RemoveDevice(mouse);
             InputSystem.RemoveDevice(keyboard);
             Call(v, "ApplyCameraPosition", 0f);
+            Set(v, "m_CollisionHoldRemaining", savedHold);
+            Set(v, "m_HeldCollisionDistance", savedHeldDistance);
             v.enabled = true;
             Call(v, "SetFrameRate");
             Cursor.lockState = CursorLockMode.Locked;

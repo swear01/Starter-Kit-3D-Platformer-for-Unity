@@ -20,13 +20,13 @@ This repository includes a basic template for a 3D platformer game in Unity 6.4.
 
 ### Camera workshop variant
 
-The improved camera is enabled by default. Mouse look responds immediately; gamepad look uses degrees per second. Follow damping is shorter, the camera starts in its intended pose, and solid obstacles pull it closer to the player. Coins and the player's own colliders do not block the camera. If an obstacle forces the camera inside the 1.5m player visibility distance, the model is temporarily rendered as shadows only and reappears after the camera recovers.
+The improved camera is enabled by default. Mouse look responds immediately; gamepad look uses degrees per second. Follow damping is shorter and the camera starts in its intended pose. Forward and side probes anticipate obstacles before they reach the camera. Distance contracts with 0.15s damping, holds briefly after an obstruction clears, then recovers with slower 0.35s damping. Immediate correction remains for physical collision; fast turns or a suddenly appearing obstacle can still require a snap to keep the camera outside walls. Coins and the player's own colliders do not block the camera. If an obstacle forces the camera inside the 1.5m player visibility distance, the model is temporarily rendered as shadows only and reappears after the camera recovers.
 
 - Move with WASD or the left stick; jump with Space or the south gamepad button.
 - Rotate with the mouse or right stick. The mouse is captured during play; Escape releases it, and clicking the Game view captures it again.
 - Zoom with the wheel, Page Up/Down, or gamepad shoulders. Held buttons now zoom continuously.
 - Hidden demo shortcuts: F1 selects the original camera behavior, F2 restores the improved camera. On macOS, use Fn with F1/F2 if those keys control brightness. There is no camera status text on the game screen.
-- Select the Camera object to tune `Mouse Sensitivity` (horizontal/vertical degrees per pixel), `Gamepad Sensitivity` (degrees per second), `Comfort Follow Smooth`, `Pivot Height`, `Wheel Zoom Step`, `Collision Mask`, and `Player Visible Distance` in the Inspector.
+- Select the Camera object to tune `Mouse Sensitivity` (horizontal/vertical degrees per pixel), `Gamepad Sensitivity` (degrees per second), `Comfort Follow Smooth`, `Pivot Height`, `Wheel Zoom Step`, `Collision Mask`, `Player Visible Distance`, `Collision Look Ahead` (metres), `Collision In/Out Damping` (seconds), and `Collision Hold Time` in the Inspector.
 
 The Player aligns its visual model to the controller's local +Z movement direction at startup, fixing the reversed Humanoid model in the workshop project. Existing model scale is preserved.
 
@@ -38,9 +38,9 @@ With the optional Unity Pipeline and Unity CLI already available, open Main in P
 unity command --project-path /path/to/project run_script --file Tests/CameraSmoke.cs --entry CameraSmoke.Main
 ```
 
-The check covers raw mouse input and stop response, stick/held-zoom behavior at simulated 30/60/144 FPS, pitch limits, hidden shortcuts, cursor release/capture, obstacle avoidance, trigger/self filtering, close-player visibility, and recovery. It creates temporary physics objects in Play Mode and removes them afterward; it does not save the scene.
+The check covers raw mouse input and stop response, stick/held-zoom behavior at simulated 30/60/144 FPS, pitch limits, hidden shortcuts, cursor release/capture, obstacle avoidance, trigger/self filtering, close-player visibility, look-ahead and gentle orbit at simulated 30/60/144 FPS, edge flicker, delayed recovery, and emergency collision correction. It creates temporary physics objects in Play Mode and removes them afterward; it does not save the scene.
 
-References: [Pointer input](https://docs.unity3d.com/Packages/com.unity.inputsystem@1.20/api/UnityEngine.InputSystem.Pointer.html), [sphere sweep behavior](https://docs.unity3d.com/6000.6/Documentation/ScriptReference/Physics.SphereCastAll.html).
+References: [separate collision damping](https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineThirdPersonFollow.html), [occlusion hold](https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineDeoccluder.html), [Pointer input](https://docs.unity3d.com/Packages/com.unity.inputsystem@1.20/api/UnityEngine.InputSystem.Pointer.html), [sphere sweep behavior](https://docs.unity3d.com/6000.6/Documentation/ScriptReference/Physics.SphereCastAll.html).
 
 ### License
 

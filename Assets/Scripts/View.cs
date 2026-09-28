@@ -36,6 +36,10 @@ public class View : MonoBehaviour
     [SerializeField, Min(0.01f)] private float m_CameraRadius = 0.3f;
     [SerializeField] private LayerMask m_CollisionMask = Physics.DefaultRaycastLayers;
     [SerializeField, Min(0f)] private float m_PlayerVisibleDistance = 1.5f;
+    [SerializeField, Min(0f)] private float m_CollisionLookAhead = 0.8f;
+    [SerializeField, Min(0f)] private float m_CollisionInDamping = 0.15f;
+    [SerializeField, Min(0f)] private float m_CollisionOutDamping = 0.35f;
+    [SerializeField, Min(0f)] private float m_CollisionHoldTime = 0.15f;
 
     [Header("Demo: F1 original / F2 improved")]
     [SerializeField] private bool m_UseOriginalCamera;
@@ -53,6 +57,8 @@ public class View : MonoBehaviour
     private float m_Zoom = 5f;
     private float m_ZoomDelta;
     private float m_CollisionDistance;
+    private float m_CollisionHoldRemaining;
+    private float m_HeldCollisionDistance;
     private Transform m_CameraTransform;
     private Camera m_Camera;
     private Renderer[] m_PlayerRenderers;
@@ -128,6 +134,7 @@ public class View : MonoBehaviour
         m_CameraRotation = new Vector2(Mathf.Clamp(angles.x + 30f, m_MinPitch, m_MaxPitch), angles.y - 130f);
         m_Zoom = Mathf.Clamp(m_Zoom, m_ZoomMin, m_ZoomMax);
         m_CollisionDistance = m_Zoom;
+        m_CollisionHoldRemaining = 0f;
         if (!m_UseOriginalCamera)
         {
             m_CameraRotationSmoothed = m_CameraRotation;
@@ -147,6 +154,7 @@ public class View : MonoBehaviour
         m_CameraRotation = new Vector2(angles.x, angles.y);
         m_CameraRotationSmoothed = m_CameraRotation;
         m_CollisionDistance = Vector3.Distance(transform.position, m_CameraTransform.position);
+        m_CollisionHoldRemaining = 0f;
         SetFrameRate();
         CaptureCursor(!original);
     }
@@ -209,12 +217,30 @@ public class View : MonoBehaviour
             float nearHeight = m_Camera.nearClipPlane * Mathf.Tan(m_Camera.fieldOfView * Mathf.Deg2Rad * 0.5f);
             float radius = Mathf.Max(m_CameraRadius, Mathf.Sqrt(nearHeight * nearHeight * (1f + m_Camera.aspect * m_Camera.aspect) + m_Camera.nearClipPlane * m_Camera.nearClipPlane));
             Physics.SyncTransforms();
-            // ponytail: allocate hits for this small level; use a reusable cast buffer if profiling shows GC spikes.
-            foreach (RaycastHit hit in Physics.SphereCastAll(transform.position, radius, offset / distance, distance, m_CollisionMask, QueryTriggerInteraction.Ignore))
+            Vector3 direction = offset / distance;
+            float safeDistance = GetObstacleDistance(direction, distance, radius);
+            float lookAhead = m_CollisionLookAhead;
+            float desiredDistance = Mathf.Max(0f, GetObstacleDistance(direction, distance + lookAhead, radius) - lookAhead);
+            if (lookAhead > 0f)
             {
-                if (!hit.transform.IsChildOf(m_Target)) distance = Mathf.Min(distance, Mathf.Max(0f, hit.distance - 0.05f));
+                float angle = Mathf.Atan2(lookAhead, distance) * Mathf.Rad2Deg;
+                desiredDistance = Mathf.Min(desiredDistance, GetObstacleDistance(Quaternion.AngleAxis(angle, Vector3.up) * direction, distance, radius));
+                desiredDistance = Mathf.Min(desiredDistance, GetObstacleDistance(Quaternion.AngleAxis(-angle, Vector3.up) * direction, distance, radius));
             }
-            m_CollisionDistance = Mathf.Min(distance, Mathf.Lerp(m_CollisionDistance, distance, 1f - Mathf.Exp(-m_ZoomSmooth * deltaTime)));
+            bool pullingIn = desiredDistance < distance - 0.001f && desiredDistance < m_CollisionDistance;
+            if (pullingIn)
+            {
+                m_CollisionHoldRemaining = m_CollisionHoldTime;
+            }
+            else if (m_CollisionHoldRemaining > 0f)
+            {
+                m_CollisionHoldRemaining = Mathf.Max(0f, m_CollisionHoldRemaining - deltaTime);
+                desiredDistance = Mathf.Min(desiredDistance, m_HeldCollisionDistance);
+            }
+            float damping = desiredDistance < m_CollisionDistance ? m_CollisionInDamping : m_CollisionOutDamping;
+            float amount = damping > 0f && deltaTime > 0f ? 1f - Mathf.Exp(-deltaTime / damping) : 1f;
+            m_CollisionDistance = Mathf.Min(safeDistance, Mathf.Lerp(m_CollisionDistance, desiredDistance, amount));
+            if (pullingIn) m_HeldCollisionDistance = m_CollisionDistance;
             m_CameraTransform.position = transform.position + offset.normalized * m_CollisionDistance;
         }
         else
@@ -224,6 +250,16 @@ public class View : MonoBehaviour
         m_CameraTransform.rotation = m_CameraHandle.rotation;
         float visibleDistance = m_PlayerVisibleDistance + (m_PlayerHidden ? 0.2f : 0f);
         SetPlayerVisibility(m_UseOriginalCamera || m_CollisionDistance >= visibleDistance);
+    }
+
+    private float GetObstacleDistance(Vector3 direction, float distance, float radius)
+    {
+        // ponytail: allocate hits for this small level; use reusable cast buffers if profiling shows GC spikes.
+        foreach (RaycastHit hit in Physics.SphereCastAll(transform.position, radius, direction, distance, m_CollisionMask, QueryTriggerInteraction.Ignore))
+        {
+            if (!hit.transform.IsChildOf(m_Target)) distance = Mathf.Min(distance, Mathf.Max(0f, hit.distance - 0.05f));
+        }
+        return distance;
     }
 
     private void SetPlayerVisibility(bool visible)
