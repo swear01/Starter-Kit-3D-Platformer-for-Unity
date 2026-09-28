@@ -183,6 +183,10 @@ public static class CameraSmoke
             var bodyRenderers = renderers.Where(r => r is MeshRenderer || r is SkinnedMeshRenderer).ToArray();
             Check(bodyRenderers.Length > 0, "No player body renderer to verify visibility");
             Check(bodyRenderers.All(r => r.shadowCastingMode == ShadowCastingMode.ShadowsOnly), "Close player should retain only shadows");
+            crowdedSelf.SetActive(false);
+            wall.transform.position = origin + Vector3.back * 0.45f;
+            Call(v, "ApplyCameraPosition", 1f / 60f);
+            Check(Vector3.Distance(origin, camera.transform.position) < 0.001f, "A wall overlapping the initial sweep sphere was missed");
             wall.SetActive(false);
             Physics.SyncTransforms();
             Call(v, "ApplyCameraPosition", 1f / 60f);
@@ -254,14 +258,23 @@ public static class CameraSmoke
                 orbitResults.Add(new { fps, degreesPerSecond = 30, biggestStep });
             }
             var savedCamera = Get<Camera>(v, "m_Camera");
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            v.enabled = true;
+            Call(v, "SetPlayerVisibility", false);
             Set(v, "m_Camera", null);
-            try { Call(v, "LateUpdate"); }
+            try
+            {
+                Call(v, "LateUpdate");
+                Check(!v.enabled && !Get<bool>(v, "m_PlayerHidden") && Cursor.lockState == CursorLockMode.None && Cursor.visible, "Missing camera must restore captured cursor and player visibility");
+            }
             finally { Set(v, "m_Camera", savedCamera); }
+            v.enabled = true;
             UnityEngine.Object.DestroyImmediate(testTarget);
             var missingTargetPosition = v.transform.position;
             Call(v, "LateUpdate");
-            Check(v.transform.position == missingTargetPosition, "Missing target should leave the camera in place");
-            return new { passed = true, missingReferencesAndZeroFollowAndEnable = "passed", input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", bufferSaturationAndSameFrameMovement = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
+            Check(!v.enabled && Cursor.lockState == CursorLockMode.None && v.transform.position == missingTargetPosition, "Missing target should leave the camera in place");
+            return new { passed = true, missingReferencesCleanupAndInitialOverlap = "passed", input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", bufferSaturationAndSameFrameMovement = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
         }
         finally
         {

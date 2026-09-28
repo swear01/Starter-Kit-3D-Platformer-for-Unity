@@ -169,7 +169,11 @@ public class View : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (m_Target == null || m_CameraPivot == null || m_CameraHandle == null || m_Camera == null || m_CameraTransform == null) return;
+        if (m_Target == null || m_CameraPivot == null || m_CameraHandle == null || m_Camera == null || m_CameraTransform == null)
+        {
+            enabled = false;
+            return;
+        }
         Keyboard keyboard = Keyboard.current;
         if (keyboard != null)
         {
