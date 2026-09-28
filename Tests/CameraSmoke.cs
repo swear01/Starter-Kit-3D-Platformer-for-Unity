@@ -125,6 +125,8 @@ public static class CameraSmoke
             float originalFirstFrame = Mathf.DeltaAngle(100f, v.transform.eulerAngles.y);
             Check(Mathf.Abs(originalFirstFrame - 5f) < 0.001f, "Original demo no longer retains rotation damping");
             Call(v, "SetCameraMode", false);
+            float nearHeight = camera.nearClipPlane * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f);
+            float radius = Mathf.Max(Get<float>(v, "m_CameraRadius"), Mathf.Sqrt(nearHeight * nearHeight * (1f + camera.aspect * camera.aspect) + camera.nearClipPlane * camera.nearClipPlane));
             var origin = new Vector3(200f, 100f, 200f);
             testTarget = new GameObject("CameraSmoke target");
             testTarget.transform.position = origin;
@@ -144,12 +146,17 @@ public static class CameraSmoke
             wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
             wall.transform.position = origin + Vector3.back * 3f;
             wall.transform.localScale = new Vector3(4f, 4f, 0.1f);
+            var crowdedSelf = new GameObject("CameraSmoke many self colliders");
+            crowdedSelf.transform.SetParent(testTarget.transform, false);
+            crowdedSelf.transform.localPosition = Vector3.back * 2f;
+            for (int i = 0; i < 40; i++) crowdedSelf.AddComponent<BoxCollider>();
             Physics.SyncTransforms();
+            var buffer = Get<RaycastHit[]>(v, "m_HitBuffer");
+            Check(Physics.SphereCastNonAlloc(origin, radius, Vector3.back, buffer, 5f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) == buffer.Length, "Fixture did not saturate hit buffer");
             Call(v, "ApplyCameraPosition", 1f / 144f);
             float blocked = Vector3.Distance(origin, camera.transform.position);
             Check(blocked > 1.5f && blocked < 2.9f, "Wall did not immediately pull camera forward");
             wall.transform.position = origin + Vector3.back;
-            Physics.SyncTransforms();
             Call(v, "ApplyCameraPosition", 1f / 144f);
             float closeDistance = Vector3.Distance(origin, camera.transform.position);
             var renderers = Get<Renderer[]>(v, "m_PlayerRenderers");
@@ -163,8 +170,6 @@ public static class CameraSmoke
             for (int frame = 0; frame < 360; frame++) Call(v, "ApplyCameraPosition", 1f / 120f);
             Check(Vector3.Distance(origin, camera.transform.position) > 4.99f, "Camera never recovers full distance");
             Check(!Get<bool>(v, "m_PlayerHidden"), "Player did not reappear after camera recovery");
-            float nearHeight = camera.nearClipPlane * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f);
-            float radius = Mathf.Max(Get<float>(v, "m_CameraRadius"), Mathf.Sqrt(nearHeight * nearHeight * (1f + camera.aspect * camera.aspect) + camera.nearClipPlane * camera.nearClipPlane));
             wall.SetActive(true);
             foreach (int fps in new[] { 30, 60, 144 })
             {
@@ -225,7 +230,7 @@ public static class CameraSmoke
                 Check(biggestStep < 13f / fps, "Gentle orbit still jumps across the obstacle at " + fps + " FPS");
                 orbitResults.Add(new { fps, degreesPerSecond = 30, biggestStep });
             }
-            return new { passed = true, input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
+            return new { passed = true, input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", bufferSaturationAndSameFrameMovement = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
         }
         finally
         {

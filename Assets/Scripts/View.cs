@@ -59,6 +59,7 @@ public class View : MonoBehaviour
     private float m_CollisionDistance;
     private float m_CollisionHoldRemaining;
     private float m_HeldCollisionDistance;
+    private readonly RaycastHit[] m_HitBuffer = new RaycastHit[32];
     private Transform m_CameraTransform;
     private Camera m_Camera;
     private Renderer[] m_PlayerRenderers;
@@ -254,9 +255,17 @@ public class View : MonoBehaviour
 
     private float GetObstacleDistance(Vector3 direction, float distance, float radius)
     {
-        // ponytail: allocate hits for this small level; use reusable cast buffers if profiling shows GC spikes.
-        foreach (RaycastHit hit in Physics.SphereCastAll(transform.position, radius, direction, distance, m_CollisionMask, QueryTriggerInteraction.Ignore))
+        int count = Physics.SphereCastNonAlloc(transform.position, radius, direction, m_HitBuffer, distance, m_CollisionMask, QueryTriggerInteraction.Ignore);
+        RaycastHit[] hits = m_HitBuffer;
+        if (count == hits.Length)
         {
+            // ponytail: rare full-buffer fallback keeps all hits; enlarge the buffer if saturation is frequent.
+            hits = Physics.SphereCastAll(transform.position, radius, direction, distance, m_CollisionMask, QueryTriggerInteraction.Ignore);
+            count = hits.Length;
+        }
+        for (int i = 0; i < count; i++)
+        {
+            RaycastHit hit = hits[i];
             if (!hit.transform.IsChildOf(m_Target)) distance = Mathf.Min(distance, Mathf.Max(0f, hit.distance - 0.05f));
         }
         return distance;
