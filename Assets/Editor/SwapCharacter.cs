@@ -10,7 +10,9 @@ public static class SwapCharacter
     const string ModelPath = Folder + "characterMedium.fbx";
     const string ReadyPath = Folder + "ZombieCharacter.prefab";
     const string PlayerPath = "Assets/Prefabs/Player.prefab";
-    const string ControllerPath = "Assets/Art/Animation/CharacterAnimatorController.controller";
+    const string ControllerPath = Folder + "ZombieAnimatorController.controller";
+    const string TemplatePath = "Assets/Art/Animation/CharacterAnimatorController.controller";
+    const float ImportScale = 0.28f;
 
     [MenuItem("Tools/Character Workshop/1 Prepare Zombie Prefab")]
     public static void Prepare()
@@ -20,12 +22,21 @@ public static class SwapCharacter
 
         var model = Require<GameObject>(ModelPath);
         var texture = Require<Texture2D>(Folder + "zombieA.png");
+        Require<AnimatorController>(TemplatePath);
+        if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath) == null && !AssetDatabase.CopyAsset(TemplatePath, ControllerPath))
+            throw new InvalidOperationException("Could not copy the starter Animator Controller.");
         var controller = Require<AnimatorController>(ControllerPath);
-        var locomotionState = controller.layers[0].stateMachine.states.Single(s => s.state.name == "Locomotion").state;
+        if (controller.layers.Length == 0)
+            throw new InvalidOperationException("Character Animator Controller has no layers.");
+        var locomotionState = controller.layers[0].stateMachine.states.SingleOrDefault(s => s.state.name == "Locomotion").state
+            ?? throw new InvalidOperationException("Character Controller needs a Locomotion state.");
         var locomotion = locomotionState.motion as BlendTree;
-        var jump = controller.layers[0].stateMachine.states.Single(s => s.state.name == "Jump").state;
-        var takeOff = locomotionState.transitions.Single(t => t.destinationState == jump);
-        var land = jump.transitions.Single(t => t.destinationState == locomotionState);
+        var jump = controller.layers[0].stateMachine.states.SingleOrDefault(s => s.state.name == "Jump").state
+            ?? throw new InvalidOperationException("Character Controller needs a Jump state.");
+        var takeOff = locomotionState.transitions.SingleOrDefault(t => t.destinationState == jump)
+            ?? throw new InvalidOperationException("Missing Locomotion to Jump transition.");
+        var land = jump.transitions.SingleOrDefault(t => t.destinationState == locomotionState)
+            ?? throw new InvalidOperationException("Missing Jump to Locomotion transition.");
         if (locomotion == null || locomotion.children.Length != 3)
             throw new InvalidOperationException("Expected the starter's three-motion Locomotion blend tree.");
         foreach (string name in new[] { "Idle", "Run", "Jump" })
@@ -41,7 +52,8 @@ public static class SwapCharacter
         Configure(ModelPath);
         foreach (string name in new[] { "Idle", "Run", "Jump" })
             Configure(Folder + name.ToLowerInvariant() + ".fbx", name);
-        var avatar = AssetDatabase.LoadAllAssetsAtPath(ModelPath).OfType<Avatar>().Single();
+        var avatar = AssetDatabase.LoadAllAssetsAtPath(ModelPath).OfType<Avatar>().SingleOrDefault()
+            ?? throw new InvalidOperationException("Missing Avatar in " + ModelPath);
         if (!avatar.isValid || !avatar.isHuman)
             throw new InvalidOperationException("Configure a valid Humanoid Avatar before creating the prefab.");
 
@@ -72,7 +84,8 @@ public static class SwapCharacter
         try
         {
             model = Require<GameObject>(ModelPath);
-            var instance = (GameObject)PrefabUtility.InstantiatePrefab(model, visual.transform);
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(model, visual.transform)
+                ?? throw new InvalidOperationException("Could not instantiate " + ModelPath);
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             instance.transform.localScale = Vector3.one;
@@ -88,7 +101,7 @@ public static class SwapCharacter
         finally { UnityEngine.Object.DestroyImmediate(visual); }
         AssetDatabase.SaveAssets();
         Selection.activeObject = Require<GameObject>(ReadyPath);
-        Debug.Log("Prepared ZombieCharacter: import scale 0.28, +Z facing, Humanoid, Idle/Run/Jump, URP material.");
+        Debug.Log($"Prepared ZombieCharacter: import scale {ImportScale}, +Z facing, Humanoid, Idle/Run/Jump, URP material.");
     }
 
     static void Configure(string path, string animation = null)
@@ -96,7 +109,7 @@ public static class SwapCharacter
         var importer = (ModelImporter)AssetImporter.GetAtPath(path);
         importer.animationType = ModelImporterAnimationType.Human;
         importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
-        importer.globalScale = 0.28f;
+        importer.globalScale = ImportScale;
         importer.useFileScale = true;
         importer.bakeAxisConversion = true;
         importer.removeConstantScaleCurves = true;
@@ -107,7 +120,8 @@ public static class SwapCharacter
         importer.humanDescription = human;
         if (animation != null)
         {
-            var clip = importer.defaultClipAnimations.Single(c => c.name == "Root|" + animation);
+            var clip = importer.defaultClipAnimations.SingleOrDefault(c => c.name == "Root|" + animation)
+                ?? throw new InvalidOperationException("Missing " + animation + " in " + path);
             clip.loopTime = animation != "Jump";
             clip.lockRootRotation = clip.lockRootHeightY = clip.lockRootPositionXZ = true;
             clip.keepOriginalOrientation = clip.keepOriginalPositionY = clip.keepOriginalPositionXZ = true;
@@ -117,7 +131,8 @@ public static class SwapCharacter
     }
 
     static AnimationClip Clip(string name) => AssetDatabase.LoadAllAssetsAtPath(Folder + name.ToLowerInvariant() + ".fbx")
-        .OfType<AnimationClip>().Single(c => c.name == "Root|" + name);
+        .OfType<AnimationClip>().SingleOrDefault(c => c.name == "Root|" + name)
+        ?? throw new InvalidOperationException("Missing imported animation: " + name);
 
     static T Require<T>(string path) where T : UnityEngine.Object =>
         AssetDatabase.LoadAssetAtPath<T>(path) ?? throw new InvalidOperationException("Missing asset: " + path);
@@ -132,16 +147,23 @@ public static class SwapCharacter
         if (preparedAnimator == null || preparedAnimator.runtimeAnimatorController == null ||
             preparedAnimator.avatar == null || !preparedAnimator.avatar.isValid || !preparedAnimator.avatar.isHuman)
             throw new InvalidOperationException("Prepare a valid animated character first.");
-        var player = PrefabUtility.LoadPrefabContents(PlayerPath);
+        Require<GameObject>(PlayerPath);
+        var player = PrefabUtility.LoadPrefabContents(PlayerPath)
+            ?? throw new InvalidOperationException("Could not open " + PlayerPath);
         try
         {
-            var serialized = new SerializedObject(player.GetComponent<Player>());
-            var model = serialized.FindProperty("m_Model");
-            var animator = serialized.FindProperty("m_Animator");
+            var component = player.GetComponent<Player>()
+                ?? throw new InvalidOperationException("Player component is missing from the prefab root.");
+            var serialized = new SerializedObject(component);
+            var model = serialized.FindProperty("m_Model")
+                ?? throw new InvalidOperationException("Player Model field is missing.");
+            var animator = serialized.FindProperty("m_Animator")
+                ?? throw new InvalidOperationException("Player Animator field is missing.");
             var previous = (Transform)model.objectReferenceValue;
             if (previous == null || previous.parent != player.transform)
                 throw new InvalidOperationException("Player Model must refer to its visual child.");
-            var replacement = (GameObject)PrefabUtility.InstantiatePrefab(ready, player.transform);
+            var replacement = (GameObject)PrefabUtility.InstantiatePrefab(ready, player.transform)
+                ?? throw new InvalidOperationException("Could not instantiate the prepared character.");
             replacement.name = "character";
             replacement.transform.SetSiblingIndex(previous.GetSiblingIndex());
             model.objectReferenceValue = replacement.transform;

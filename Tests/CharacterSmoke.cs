@@ -9,11 +9,12 @@ using UnityEngine.InputSystem.LowLevel;
 public static class CharacterSmoke
 {
     static readonly BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
-    static T Get<T>(Player player, string name) => (T)typeof(Player).GetField(name, Fields).GetValue(player);
-    static void Set(Player player, string name, object value) => typeof(Player).GetField(name, Fields).SetValue(player, value);
+    static T Get<T>(Player player, string name) => (T)(typeof(Player).GetField(name, Fields) ?? throw new Exception("Player." + name + " field not found")).GetValue(player);
+    static void Set(Player player, string name, object value) => (typeof(Player).GetField(name, Fields) ?? throw new Exception("Player." + name + " field not found")).SetValue(player, value);
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
     static void Tick(Player player, Animator animator, Gamepad pad, GamepadState state, int count = 1)
     {
+        // One tick is an input edge; longer runs use equivalent 60 Hz durations.
         count = count == 1 ? 1 : Mathf.CeilToInt(count / (60f * Time.deltaTime));
         for (int i = 0; i < count; i++)
         {
@@ -36,18 +37,21 @@ public static class CharacterSmoke
         Check(ready != null && ready.transform.localScale == Vector3.one && ready.transform.localRotation == Quaternion.identity,
             "Prepared visual root must be neutral.");
         var savedAnimator = ready.GetComponentInChildren<Animator>();
+        Check(savedAnimator != null && savedAnimator.avatar != null && savedAnimator.runtimeAnimatorController != null,
+            "Prepared prefab needs an Animator, Avatar and Controller.");
         Check(savedAnimator.avatar.isHuman && savedAnimator.avatar.isValid && savedAnimator.humanScale < 2f,
             "Avatar is invalid or retains the old FBX scale.");
         Check(!savedAnimator.applyRootMotion, "CharacterController must own movement.");
         Check(savedAnimator.runtimeAnimatorController.animationClips.All(c => !c.name.Contains("Targeting Pose")), "Controller uses a static pose.");
         foreach (string name in new[] { "idle", "run", "jump" })
         {
-            var importer = (ModelImporter)AssetImporter.GetAtPath("Assets/NewCharacter/" + name + ".fbx");
-            Check(importer.clipAnimations.Length == 1 && importer.clipAnimations[0].name == "Root|" + char.ToUpperInvariant(name[0]) + name.Substring(1),
+            var importer = AssetImporter.GetAtPath("Assets/NewCharacter/" + name + ".fbx") as ModelImporter;
+            Check(importer != null && importer.clipAnimations.Length == 1 && importer.clipAnimations[0].name == "Root|" + char.ToUpperInvariant(name[0]) + name.Substring(1),
                 "Wrong imported clip: " + name);
             Check(importer.clipAnimations[0].loopTime == (name != "jump"), "Wrong loop setting: " + name);
         }
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Player.prefab");
+        Check(prefab != null && prefab.GetComponent<Player>() != null, "Player prefab or root component is missing.");
         var prefabPlayer = prefab.GetComponent<Player>();
         Check(Get<Transform>(prefabPlayer, "m_Model").GetComponentInChildren<Animator>() == Get<Animator>(prefabPlayer, "m_Animator"), "Player references old visuals.");
         var liveModel = Get<Transform>(live, "m_Model");
@@ -63,6 +67,7 @@ public static class CharacterSmoke
         InputActionAsset testActions = null;
         InputActionMap testMap = null;
         InputActionReference testMove = null, testJump = null;
+        object result;
         try
         {
             live.enabled = false;
@@ -132,10 +137,15 @@ public static class CharacterSmoke
             typeof(Player).GetMethod("Jump", Fields).Invoke(player, null);
             Check(Vector3.Distance(model.localScale, Vector3.Scale(Vector3.one * 0.65f, new Vector3(0.5f, 1.5f, 0.5f))) < 0.001f,
                 "Jump replaces the authored baseline scale.");
-            Tick(player, animator, pad, new GamepadState(), 100);
+            Tick(player, animator, pad, new GamepadState());
+            int limit = Mathf.CeilToInt(2f / Time.deltaTime);
+            while (!instance.GetComponent<CharacterController>().isGrounded && limit-- > 0)
+                Tick(player, animator, pad, new GamepadState());
+            Check(Vector3.Distance(model.localScale, new Vector3(0.8125f, 0.4875f, 0.8125f)) < 0.001f,
+                "Landing replaces the authored baseline scale.");
             Tick(player, animator, pad, new GamepadState(), 50);
             Check(Vector3.Distance(model.localScale, Vector3.one * 0.65f) < 0.005f, "Effects reset a non-unit visual to size 1.");
-            return new { passed = true, ready = ready.name, avatarScale = savedAnimator.humanScale, liveHeight = Height(liveAnimator), moved = travel.magnitude, facing = Vector3.Dot(travel.normalized, instance.transform.forward), checks = "import, refs, idle/run/jump, model facing, movement, double jump, scale recovery, authored rotation/scale" };
+            result = new { passed = true, ready = ready.name, avatarScale = savedAnimator.humanScale, liveHeight = Height(liveAnimator), moved = travel.magnitude, facing = Vector3.Dot(travel.normalized, instance.transform.forward), checks = "import, refs, idle/run/jump, model facing, movement, double jump, scale recovery, authored rotation/scale" };
         }
         finally
         {
@@ -149,7 +159,8 @@ public static class CharacterSmoke
             live.enabled = true;
             if (!moveEnabled) moveRef.action.Disable();
             if (!jumpEnabled) jumpRef.action.Disable();
-            Check(Vector3.Distance(liveModel.localScale, initialLiveScale) < 0.005f, "Test changed live character size.");
         }
+        Check(Vector3.Distance(liveModel.localScale, initialLiveScale) < 0.005f, "Test changed live character size.");
+        return result;
     }
 }

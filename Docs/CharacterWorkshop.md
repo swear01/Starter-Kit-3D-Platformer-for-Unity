@@ -61,10 +61,10 @@ ZombieCharacter                 ← 遊戲效果作用在這層
 在子模型的 Animator：
 
 - Avatar 使用模型匯入產生的有效 Avatar。
-- Controller 指定 `Assets/Art/Animation/CharacterAnimatorController.controller`。
+- 先在 Project 視窗複製 `Assets/Art/Animation/CharacterAnimatorController.controller`，保存為 `Assets/NewCharacter/ZombieAnimatorController.controller`，再指定這份角色專用的 Controller。
 - 關閉 Apply Root Motion。
 
-打開這個 Controller，在 Locomotion Blend Tree 保留原本的 Speed 門檻，把三個 Motion 設為 Idle、Run、Run；Jump 狀態設為 Jump。保留原有 `Speed`／`Grounded` 參數與轉場條件，Player.cs 會更新它們。兩條轉場的 **Has Exit Time 關閉**，讓起跳與落地直接響應 Grounded，避免等待走路／待機動畫播到指定位置才跳。
+打開這份複製的 Controller，在 Locomotion Blend Tree 保留原本的 Speed 門檻，把三個 Motion 設為 Idle、Run、Run；Jump 狀態設為 Jump。保留原有 `Speed`／`Grounded` 參數與轉場條件，Player.cs 會更新它們。兩條轉場的 **Has Exit Time 關閉**，讓起跳與落地直接響應 Grounded，避免等待走路／待機動畫播到指定位置才跳。
 
 把整個 `ZombieCharacter` 拖到 Project 視窗，保存為 `Assets/NewCharacter/ZombieCharacter.prefab`。它的外層 Transform 是 0／0／1，材質、Animator 與朝向已接好。
 
@@ -108,7 +108,7 @@ Player.cs 只記住 Model 初始大小，跳躍／落地相對這個大小拉伸
 - `Tools > Character Workshop > 1 Prepare Zombie Prefab`：處理匯入、動畫、材質，保存角色 Prefab。
 - `Tools > Character Workshop > 2 Apply Prepared Zombie To Player`：把已準備好的角色接到 Player。
 
-兩步都要停止 Play Mode。工具會更新這個範例的匯入設定、角色 Prefab 與共用 Animator Controller，並重建這包素材的自動 Avatar 映射；再次執行會重新套用這些固定值。它不下載檔案、不刪除舊素材，也不把任何「整理模型」工作放到遊戲執行時。
+兩步都要停止 Play Mode。工具會更新這個範例的匯入設定、角色 Prefab 與角色專用 Animator Controller，保留原本的 Controller，並重建這包素材的自動 Avatar 映射；再次執行會重新套用這些固定值。它不下載檔案、不刪除舊素材，也不把任何「整理模型」工作放到遊戲執行時。
 
 可選的本機回歸檢查（需要已安裝的 Unity Pipeline／CLI）：
 
