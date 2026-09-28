@@ -10,9 +10,9 @@ using UnityEngine.InputSystem.LowLevel;
 public static class CameraSmoke
 {
     static readonly BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
-    static T Get<T>(View v, string name) => (T)typeof(View).GetField(name, Flags).GetValue(v);
-    static void Set(View v, string name, object value) => typeof(View).GetField(name, Flags).SetValue(v, value);
-    static void Call(View v, string name, params object[] args) => typeof(View).GetMethod(name, Flags).Invoke(v, args);
+    static T Get<T>(View v, string name) => (T)(typeof(View).GetField(name, Flags) ?? throw new Exception($"View.{name} field not found")).GetValue(v);
+    static void Set(View v, string name, object value) => (typeof(View).GetField(name, Flags) ?? throw new Exception($"View.{name} field not found")).SetValue(v, value);
+    static void Call(View v, string name, params object[] args) => (typeof(View).GetMethod(name, Flags) ?? throw new Exception($"View.{name} method not found")).Invoke(v, args);
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
     static void ResetRotation(View v, float yaw = 100f)
     {
@@ -26,15 +26,26 @@ public static class CameraSmoke
         Check(UnityEditor.EditorApplication.isPlaying, "Run in Main scene Play Mode");
         Check(Application.isFocused, "Focus the Game view before running");
         View v = UnityEngine.Object.FindAnyObjectByType<View>();
+        Check(v != null, "No View found in scene");
         Check(!Get<bool>(v, "m_UseOriginalCamera"), "Improved must be the default");
         Check(Quaternion.Angle(v.transform.rotation, Quaternion.Euler(Get<Vector2>(v, "m_CameraRotation").x, Get<Vector2>(v, "m_CameraRotation").y, 0f)) < 0.01f, "Startup rotation still drifting");
         Check(QualitySettings.vSyncCount == 1 && Application.targetFrameRate == -1, "Improved mode still caps Editor at 35 FPS");
         var target = Get<Transform>(v, "m_Target");
         var pivot = Get<Transform>(v, "m_CameraPivot");
         var camera = Camera.main;
+        Check(camera != null, "No Main Camera found in scene");
+        Check(target != null && pivot != null, "View target/pivot missing");
         var savedPosition = v.transform.position;
         var savedRotation = v.transform.rotation;
         var savedPivot = pivot.localPosition;
+        var savedCameraPosition = camera.transform.position;
+        var savedCameraRotation = camera.transform.rotation;
+        var savedCollision = Get<float>(v, "m_CollisionDistance");
+        var savedHidden = Get<bool>(v, "m_PlayerHidden");
+        var savedFollow = Get<float>(v, "m_ComfortFollowSmooth");
+        var mouseSensitivity = Get<Vector2>(v, "m_MouseSensitivity");
+        var stickSensitivity = Get<Vector2>(v, "m_GamepadSensitivity");
+        var wheelStep = Get<float>(v, "m_WheelZoomStep");
         var savedZoom = Get<float>(v, "m_Zoom");
         var savedHold = Get<float>(v, "m_CollisionHoldRemaining");
         var savedHeldDistance = Get<float>(v, "m_HeldCollisionDistance");
@@ -50,7 +61,7 @@ public static class CameraSmoke
             InputSystem.QueueStateEvent(mouse, new MouseState { scroll = Vector2.up * 120f });
             InputSystem.Update();
             Call(v, "LateUpdate");
-            Check(Mathf.Abs(Get<float>(v, "m_Zoom") - (savedZoom - 0.75f)) < 0.001f, "Wheel should change requested distance by 0.75m");
+            Check(Mathf.Abs(Get<float>(v, "m_Zoom") - Mathf.Clamp(savedZoom - wheelStep, Get<float>(v, "m_ZoomMin"), Get<float>(v, "m_ZoomMax"))) < 0.001f, "Wheel should apply configured zoom step");
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape));
             InputSystem.QueueStateEvent(mouse, new MouseState { delta = Vector2.right * 1000f });
             InputSystem.Update();
@@ -89,12 +100,12 @@ public static class CameraSmoke
                 InputSystem.Update();
                 Call(v, "HandleInput", 1f / fps);
                 Call(v, "ApplyRotation", 1f / fps);
-                Check(Mathf.Abs(Mathf.DeltaAngle(100f, v.transform.eulerAngles.y) - 15f) < 0.001f, "Mouse response depends on FPS or has rotation lag");
+                Check(Mathf.Abs(Mathf.DeltaAngle(100f, v.transform.eulerAngles.y) - 100f * mouseSensitivity.x) < 0.001f, "Mouse response depends on FPS or has rotation lag");
                 InputSystem.QueueStateEvent(mouse, new MouseState());
                 InputSystem.Update();
                 Call(v, "HandleInput", 1f / fps);
                 Call(v, "ApplyRotation", 1f / fps);
-                Check(Mathf.Abs(Mathf.DeltaAngle(115f, v.transform.eulerAngles.y)) < 0.001f, "Mouse stop leaves residual rotation");
+                Check(Mathf.Abs(Mathf.DeltaAngle(100f + 100f * mouseSensitivity.x, v.transform.eulerAngles.y)) < 0.001f, "Mouse stop leaves residual rotation");
                 ResetRotation(v);
                 Set(v, "m_Zoom", 10f);
                 InputSystem.QueueStateEvent(pad, new GamepadState { rightStick = Vector2.right }.WithButton(GamepadButton.RightShoulder));
@@ -103,19 +114,19 @@ public static class CameraSmoke
                 Call(v, "ApplyRotation", 1f / fps);
                 float yaw = Get<Vector2>(v, "m_CameraRotation").y;
                 float zoom = Get<float>(v, "m_Zoom");
-                Check(Mathf.Abs(Mathf.DeltaAngle(280f, yaw)) < 0.01f, "Stick speed is not 180 degrees/second at " + fps + " FPS");
-                Check(Mathf.Abs(zoom - 7.5f) < 0.001f, "Held zoom depends on FPS at " + fps + " FPS");
-                fpsResults.Add(new { fps, mouseYaw = 15f, stickYawAfter1s = yaw, heldZoomAfter1s = zoom });
+                Check(Mathf.Abs(Mathf.DeltaAngle(100f + stickSensitivity.x, yaw)) < 0.01f, "Stick speed differs from configured degrees/second at " + fps + " FPS");
+                Check(Mathf.Abs(zoom - Mathf.Clamp(10f - 0.1f * Get<float>(v, "m_ZoomSpeed"), Get<float>(v, "m_ZoomMin"), Get<float>(v, "m_ZoomMax"))) < 0.001f, "Held zoom depends on FPS at " + fps + " FPS");
+                fpsResults.Add(new { fps, mouseYaw = 100f * mouseSensitivity.x, stickYawAfter1s = yaw, heldZoomAfter1s = zoom });
             }
             InputSystem.QueueStateEvent(pad, new GamepadState());
             InputSystem.QueueStateEvent(mouse, new MouseState { delta = Vector2.up * 10000f });
             InputSystem.Update();
             Call(v, "HandleInput", 1f / 60f);
-            Check(Get<Vector2>(v, "m_CameraRotation").x == 0f, "Minimum pitch clamp failed");
+            Check(Get<Vector2>(v, "m_CameraRotation").x == Get<float>(v, "m_MinPitch"), "Minimum pitch clamp failed");
             InputSystem.QueueStateEvent(mouse, new MouseState { delta = Vector2.down * 10000f });
             InputSystem.Update();
             Call(v, "HandleInput", 1f / 60f);
-            Check(Get<Vector2>(v, "m_CameraRotation").x == 80f, "Maximum pitch clamp failed");
+            Check(Get<Vector2>(v, "m_CameraRotation").x == Get<float>(v, "m_MaxPitch"), "Maximum pitch clamp failed");
             Call(v, "SetCameraMode", true);
             ResetRotation(v);
             InputSystem.QueueStateEvent(mouse, new MouseState { delta = Vector2.right * 100f });
@@ -123,8 +134,12 @@ public static class CameraSmoke
             Call(v, "HandleInput", 1f / 60f);
             Call(v, "ApplyRotation", 1f / 60f);
             float originalFirstFrame = Mathf.DeltaAngle(100f, v.transform.eulerAngles.y);
-            Check(Mathf.Abs(originalFirstFrame - 5f) < 0.001f, "Original demo no longer retains rotation damping");
+            Check(Mathf.Abs(originalFirstFrame - 5f * Get<float>(v, "m_RotationSpeedY") * Mathf.Clamp01(Get<float>(v, "m_RotationSmooth") / 60f)) < 0.001f, "Original demo no longer retains rotation damping");
             Call(v, "SetCameraMode", false);
+            Set(v, "m_ComfortFollowSmooth", 0f);
+            Call(v, "FollowTarget", 1f / 60f);
+            Check(Vector3.Distance(v.transform.position, target.position + Vector3.up * Get<float>(v, "m_PivotHeight")) < 0.001f, "Zero follow damping must follow immediately");
+            Set(v, "m_ComfortFollowSmooth", savedFollow);
             float nearHeight = camera.nearClipPlane * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f);
             float radius = Mathf.Max(Get<float>(v, "m_CameraRadius"), Mathf.Sqrt(nearHeight * nearHeight * (1f + camera.aspect * camera.aspect) + camera.nearClipPlane * camera.nearClipPlane));
             var origin = new Vector3(200f, 100f, 200f);
@@ -161,7 +176,9 @@ public static class CameraSmoke
             float closeDistance = Vector3.Distance(origin, camera.transform.position);
             var renderers = Get<Renderer[]>(v, "m_PlayerRenderers");
             Check(closeDistance < 1.5f && Get<bool>(v, "m_PlayerHidden"), "Close obstruction still shows the inside of the player");
-            Check(renderers.Where(r => r is MeshRenderer || r is SkinnedMeshRenderer).All(r => r.shadowCastingMode == ShadowCastingMode.ShadowsOnly), "Close player should retain only shadows");
+            var bodyRenderers = renderers.Where(r => r is MeshRenderer || r is SkinnedMeshRenderer).ToArray();
+            Check(bodyRenderers.Length > 0, "No player body renderer to verify visibility");
+            Check(bodyRenderers.All(r => r.shadowCastingMode == ShadowCastingMode.ShadowsOnly), "Close player should retain only shadows");
             wall.SetActive(false);
             Physics.SyncTransforms();
             Call(v, "ApplyCameraPosition", 1f / 60f);
@@ -230,7 +247,11 @@ public static class CameraSmoke
                 Check(biggestStep < 13f / fps, "Gentle orbit still jumps across the obstacle at " + fps + " FPS");
                 orbitResults.Add(new { fps, degreesPerSecond = 30, biggestStep });
             }
-            return new { passed = true, input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", bufferSaturationAndSameFrameMovement = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
+            UnityEngine.Object.DestroyImmediate(testTarget);
+            var missingTargetPosition = v.transform.position;
+            Call(v, "LateUpdate");
+            Check(v.transform.position == missingTargetPosition, "Missing target should leave the camera in place");
+            return new { passed = true, missingTargetAndZeroFollow = "passed", input = fpsResults, originalFirstFrameYaw = originalFirstFrame, blockedDistance = blocked, closeDistance, nearPlayerClipping = "passed", bufferSaturationAndSameFrameMovement = "passed", firstRecoveryDistance = recovering, approach = approachResults, orbit = orbitResults, sideAnticipation, startupAndHotkeysAndPitchAndCollision = "passed" };
         }
         finally
         {
@@ -241,7 +262,8 @@ public static class CameraSmoke
             v.transform.SetPositionAndRotation(savedPosition, savedRotation);
             pivot.localPosition = savedPivot;
             Set(v, "m_Zoom", savedZoom);
-            Set(v, "m_CollisionDistance", savedZoom);
+            Set(v, "m_CollisionDistance", savedCollision);
+            Set(v, "m_ComfortFollowSmooth", savedFollow);
             Set(v, "m_CollisionHoldRemaining", 0f);
             Set(v, "m_CameraRotation", new Vector2(savedRotation.eulerAngles.x, savedRotation.eulerAngles.y));
             Set(v, "m_CameraRotationSmoothed", Get<Vector2>(v, "m_CameraRotation"));
@@ -249,7 +271,8 @@ public static class CameraSmoke
             InputSystem.RemoveDevice(pad);
             InputSystem.RemoveDevice(mouse);
             InputSystem.RemoveDevice(keyboard);
-            Call(v, "ApplyCameraPosition", 0f);
+            camera.transform.SetPositionAndRotation(savedCameraPosition, savedCameraRotation);
+            Call(v, "SetPlayerVisibility", !savedHidden);
             Set(v, "m_CollisionHoldRemaining", savedHold);
             Set(v, "m_HeldCollisionDistance", savedHeldDistance);
             v.enabled = true;

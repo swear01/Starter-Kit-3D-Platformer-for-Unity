@@ -168,6 +168,7 @@ public class View : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (m_Target == null) return;
         Keyboard keyboard = Keyboard.current;
         if (keyboard != null)
         {
@@ -192,7 +193,7 @@ public class View : MonoBehaviour
     {
         Vector3 target = m_Target.position + Vector3.up * (m_UseOriginalCamera ? 0f : m_PivotHeight);
         float smooth = m_UseOriginalCamera ? m_FollowSmooth : m_ComfortFollowSmooth;
-        transform.position = Vector3.Lerp(transform.position, target, 1f - Mathf.Exp(-smooth * deltaTime));
+        transform.position = Vector3.Lerp(transform.position, target, smooth > 0f ? 1f - Mathf.Exp(-smooth * deltaTime) : 1f);
     }
 
     private void ApplyRotation(float deltaTime)
