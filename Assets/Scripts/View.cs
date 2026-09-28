@@ -116,7 +116,7 @@ public class View : MonoBehaviour
 
     private void OnZoomPerformed(InputAction.CallbackContext ctx)
     {
-        m_ZoomDelta += ctx.ReadValue<float>();
+        if (m_UseOriginalCamera || ctx.control.device is Mouse) m_ZoomDelta += ctx.ReadValue<float>();
     }
 
     private void Start()
@@ -152,6 +152,7 @@ public class View : MonoBehaviour
     {
         if (m_UseOriginalCamera == original) return;
         m_UseOriginalCamera = original;
+        m_ZoomDelta = 0f;
         Vector3 angles = transform.eulerAngles;
         m_CameraRotation = new Vector2(angles.x, angles.y);
         m_CameraRotationSmoothed = m_CameraRotation;
@@ -315,12 +316,15 @@ public class View : MonoBehaviour
         InputAction zoomAction = m_ZoomAction != null ? m_ZoomAction.action : null;
         float scroll = m_ZoomDelta;
         m_ZoomDelta = 0f;
-        if (Application.isFocused && zoomAction != null && (m_UseOriginalCamera || !(zoomAction.activeControl?.device is Mouse) || Cursor.lockState == CursorLockMode.Locked))
+        if (Application.isFocused && zoomAction != null)
         {
             if (m_UseOriginalCamera) m_Zoom -= scroll * m_ZoomSpeed;
-            // The Zoom action reports 0.1 per wheel notch.
-            else if (zoomAction.activeControl?.device is Mouse) m_Zoom -= scroll * 10f * m_WheelZoomStep;
-            else m_Zoom -= zoomAction.ReadValue<float>() * m_ZoomSpeed * deltaTime;
+            else
+            {
+                // The Zoom action reports 0.1 per wheel notch.
+                if (Cursor.lockState == CursorLockMode.Locked) m_Zoom -= scroll * 10f * m_WheelZoomStep;
+                if (!(zoomAction.activeControl?.device is Mouse)) m_Zoom -= zoomAction.ReadValue<float>() * m_ZoomSpeed * deltaTime;
+            }
             m_Zoom = Mathf.Clamp(m_Zoom, m_ZoomMin, m_ZoomMax);
         }
     }
