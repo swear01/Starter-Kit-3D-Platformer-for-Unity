@@ -16,6 +16,7 @@ public static class CameraSmoke
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
     static void ResetRotation(View v, float yaw = 100f)
     {
+        Set(v, "m_OpeningRotationOffset", Vector2.zero);
         Set(v, "m_CameraRotation", new Vector2(30f, yaw));
         Set(v, "m_CameraRotationSmoothed", new Vector2(30f, yaw));
         Call(v, "ApplyRotation", 1f / 60f);
@@ -29,7 +30,6 @@ public static class CameraSmoke
         Check(v != null, "No View found in scene");
         Check(v.enabled, "Run with the camera enabled");
         Check(!Get<bool>(v, "m_UseOriginalCamera"), "Improved must be the default");
-        Check(Quaternion.Angle(v.transform.rotation, Quaternion.Euler(Get<Vector2>(v, "m_CameraRotation").x, Get<Vector2>(v, "m_CameraRotation").y, 0f)) < 0.01f, "Startup rotation still drifting");
         Check(QualitySettings.vSyncCount == 1 && Application.targetFrameRate == -1, "Improved mode still caps Editor at 35 FPS");
         var target = Get<Transform>(v, "m_Target");
         var pivot = Get<Transform>(v, "m_CameraPivot");
@@ -38,6 +38,9 @@ public static class CameraSmoke
         Check(target != null && pivot != null, "View target/pivot missing");
         var savedPosition = v.transform.position;
         var savedRotation = v.transform.rotation;
+        var savedAngles = Get<Vector2>(v, "m_CameraRotation");
+        var savedSmoothed = Get<Vector2>(v, "m_CameraRotationSmoothed");
+        var savedOpening = Get<Vector2>(v, "m_OpeningRotationOffset");
         var savedPivot = pivot.localPosition;
         var savedCameraPosition = camera.transform.position;
         var savedCameraRotation = camera.transform.rotation;
@@ -67,6 +70,24 @@ public static class CameraSmoke
             mouse = InputSystem.AddDevice<Mouse>();
             keyboard = InputSystem.AddDevice<Keyboard>();
             touch = InputSystem.AddDevice<Touchscreen>();
+            Set(v, "m_CameraRotation", new Vector2(30f, -130f));
+            Set(v, "m_OpeningRotationOffset", new Vector2(-30f, 130f));
+            Call(v, "ApplyRotation", 1f / 60f);
+            float ease = Mathf.Clamp01(Get<float>(v, "m_RotationSmooth") / 60f);
+            Check(Quaternion.Angle(v.transform.rotation, Quaternion.Euler(30f * ease, -130f * ease, 0f)) < 0.01f,
+                "Opening camera no longer retains the original turn");
+            var opening = Get<Vector2>(v, "m_OpeningRotationOffset");
+            InputSystem.QueueStateEvent(mouse, new MouseState { delta = Vector2.right * 100f });
+            InputSystem.Update();
+            Call(v, "HandleInput", 1f / 60f);
+            Check(Get<Vector2>(v, "m_OpeningRotationOffset") == opening, "Mouse input changes opening easing");
+            Call(v, "ApplyRotation", 1f / 60f);
+            var angles = new Vector2(30f, -130f + 100f * mouseSensitivity.x) + opening * (1f - ease);
+            Check(Quaternion.Angle(v.transform.rotation, Quaternion.Euler(angles.x, angles.y, 0f)) < 0.01f,
+                "Mouse input is delayed during the opening turn");
+            for (int i = 0; i < 120; i++) Call(v, "ApplyRotation", 1f / 60f);
+            Check(Get<Vector2>(v, "m_OpeningRotationOffset").magnitude < 0.01f, "Opening turn never settles");
+            ResetRotation(v);
             InputSystem.QueueStateEvent(mouse, new MouseState { scroll = Vector2.up * 120f });
             InputSystem.Update();
             Call(v, "LateUpdate");
@@ -325,8 +346,9 @@ public static class CameraSmoke
             Set(v, "m_CollisionDistance", savedCollision);
             Set(v, "m_ComfortFollowSmooth", savedFollow);
             Set(v, "m_CollisionHoldRemaining", 0f);
-            Set(v, "m_CameraRotation", new Vector2(savedRotation.eulerAngles.x, savedRotation.eulerAngles.y));
-            Set(v, "m_CameraRotationSmoothed", Get<Vector2>(v, "m_CameraRotation"));
+            Set(v, "m_CameraRotation", savedAngles);
+            Set(v, "m_CameraRotationSmoothed", savedSmoothed);
+            Set(v, "m_OpeningRotationOffset", savedOpening);
             Set(v, "m_UseOriginalCamera", false);
             if (pad != null) InputSystem.RemoveDevice(pad);
             if (mouse != null) InputSystem.RemoveDevice(mouse);

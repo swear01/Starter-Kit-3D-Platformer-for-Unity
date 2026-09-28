@@ -55,6 +55,7 @@ public class View : MonoBehaviour
 
     private Vector2 m_CameraRotation;
     private Vector2 m_CameraRotationSmoothed;
+    private Vector2 m_OpeningRotationOffset;
     private float m_Zoom = 5f;
     private float m_ZoomDelta;
     private float m_CollisionDistance;
@@ -140,9 +141,10 @@ public class View : MonoBehaviour
         m_CollisionHoldRemaining = 0f;
         if (!m_UseOriginalCamera)
         {
-            m_CameraRotationSmoothed = m_CameraRotation;
+            m_OpeningRotationOffset = -m_CameraRotation;
+            m_CameraRotationSmoothed = Vector2.zero;
             transform.position = m_Target.position + Vector3.up * m_PivotHeight;
-            transform.rotation = Quaternion.Euler(m_CameraRotation.x, m_CameraRotation.y, 0f);
+            transform.rotation = Quaternion.identity;
             m_CameraPivot.localPosition = Vector3.back * m_Zoom;
             ApplyCameraPosition(0f);
         }
@@ -152,6 +154,7 @@ public class View : MonoBehaviour
     {
         if (m_UseOriginalCamera == original) return;
         m_UseOriginalCamera = original;
+        m_OpeningRotationOffset = Vector2.zero;
         m_ZoomDelta = 0f;
         Vector3 angles = transform.eulerAngles;
         m_CameraRotation = new Vector2(angles.x, angles.y);
@@ -204,9 +207,10 @@ public class View : MonoBehaviour
 
     private void ApplyRotation(float deltaTime)
     {
+        m_OpeningRotationOffset = Vector2.Lerp(m_OpeningRotationOffset, Vector2.zero, deltaTime * m_RotationSmooth);
         m_CameraRotationSmoothed = m_UseOriginalCamera
             ? Vector2.Lerp(m_CameraRotationSmoothed, m_CameraRotation, deltaTime * m_RotationSmooth)
-            : m_CameraRotation;
+            : m_CameraRotation + m_OpeningRotationOffset;
         transform.rotation = Quaternion.Euler(m_CameraRotationSmoothed.x, m_CameraRotationSmoothed.y, 0f);
     }
 
